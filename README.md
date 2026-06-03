@@ -33,10 +33,10 @@ The app uses email/password authentication with signed HTTP-only session cookies
 
 Seller registration is open from the UI. Admin registration requires `ADMIN_INVITE_CODE` after the first admin exists. To avoid setup deadlock, the first admin account can be registered without an invite code when there are no admins in the database.
 
-Suggested test credentials:
+Test credentials:
 
-- Admin: register `admin@aasamedchem.local` / `Admin@12345`
-- Seller: register `seller@aasamedchem.local` / `Seller@12345`
+- Admin: `admin@test.com` / `admin@123#`
+- Seller/User: `parvaggarwal130@gmail.com` / `Parv@1122`
 
 Passwords are stored as PBKDF2-SHA256 hashes. Do not commit real credentials.
 
@@ -155,7 +155,7 @@ npm run build
 
 Seller/User flow:
 
-1. Register or log in as a Seller/User.
+1. Log in as the Seller/User test account.
 2. Search or filter products.
 3. Add products to the quotation.
 4. Enter quantities in any supported compatible unit.
@@ -164,7 +164,7 @@ Seller/User flow:
 
 Admin flow:
 
-1. Register or log in as an Admin.
+1. Log in as the Admin test account.
 2. Review inventory levels and alternate unit displays.
 3. Add or delete products.
 4. Review incoming quotations/orders.
