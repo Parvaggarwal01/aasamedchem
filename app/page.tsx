@@ -210,29 +210,27 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#f7f3ea] text-[#17201b]">
-      <section className="border-b border-[#d7cec0] bg-[#19403c] text-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-8 px-5 py-8 md:flex-row md:items-end md:justify-between lg:px-8">
-          <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f0c46b]">
-              AasaMedChem assignment
+      <section className="border-b border-[#d7cec0] bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-5 md:flex-row md:items-center md:justify-between lg:px-8">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9b5f22]">
+              AasaMedChem
             </p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-normal md:text-6xl">
-              Inventory, unit conversion, and quotation desk
+            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-[#17201b] md:text-3xl">
+              Inventory and quotations
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-[#dce8e3]">
-              A Neon-backed role-based prototype for sellers to prepare INR quotations and admins
-              to validate stock, base-unit conversions, pricing, and incoming order details.
-            </p>
           </div>
 
           {session ? (
-            <div className="w-full max-w-sm rounded-md border border-white/20 bg-white/10 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#f0c46b]">
-                Signed in as {session.role}
-              </p>
-              <p className="mt-1 truncate text-sm text-[#dce8e3]">{session.email}</p>
+            <div className="flex w-full flex-col gap-3 rounded-md border border-[#d7cec0] bg-[#f7f3ea] p-3 md:w-auto md:min-w-80">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#9b5f22]">
+                  {session.role}
+                </p>
+                <p className="mt-1 truncate text-sm font-medium text-[#33413c]">{session.email}</p>
+              </div>
               <button
-                className="mt-4 h-10 w-full rounded-md bg-white px-4 text-sm font-semibold text-[#19403c] hover:bg-[#eef5f3]"
+                className="h-10 rounded-md bg-[#19403c] px-4 text-sm font-semibold text-white hover:bg-[#23554f]"
                 onClick={logout}
                 type="button"
               >
@@ -256,7 +254,7 @@ export default function Home() {
         ) : null}
         {isLoading || isPending ? (
           <div className="mt-3 rounded-md border border-[#d7cec0] bg-white px-4 py-3 text-sm text-[#66706b]">
-            {isLoading ? "Loading inventory from Neon..." : "Saving changes..."}
+            {isLoading ? "Loading inventory..." : "Saving changes..."}
           </div>
         ) : null}
       </section>
@@ -288,6 +286,7 @@ export default function Home() {
               onAddProduct={addProductToCart}
               onCategoryChange={setCategory}
               onQueryChange={setQuery}
+              orders={orders}
               products={products}
               query={query}
             />
@@ -440,6 +439,7 @@ function SellerPanel({
   onAddProduct,
   onCategoryChange,
   onQueryChange,
+  orders,
   products,
   query,
 }: {
@@ -450,6 +450,7 @@ function SellerPanel({
   onAddProduct: (product: Product) => void;
   onCategoryChange: (category: string) => void;
   onQueryChange: (query: string) => void;
+  orders: Order[];
   products: Product[];
   query: string;
 }) {
@@ -487,41 +488,117 @@ function SellerPanel({
         </label>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {filteredProducts.map((product) => (
-          <article className="rounded-md border border-[#d7cec0] bg-white p-5 shadow-sm" key={product.id}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b5f22]">
-                  {product.category}
-                </p>
-                <h2 className="mt-2 text-xl font-semibold">{product.name}</h2>
-                <p className="mt-1 text-sm text-[#66706b]">{product.sku}</p>
+      <section className="space-y-4">
+        <h2 className="text-2xl font-semibold">Products</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          {filteredProducts.map((product) => (
+            <article className="rounded-md border border-[#d7cec0] bg-white p-5 shadow-sm" key={product.id}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b5f22]">
+                    {product.category}
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold">{product.name}</h2>
+                  <p className="mt-1 text-sm text-[#66706b]">{product.sku}</p>
+                </div>
+                <button
+                  className="h-10 rounded-md bg-[#19403c] px-4 text-sm font-semibold text-white hover:bg-[#23554f]"
+                  onClick={() => onAddProduct(product)}
+                  type="button"
+                >
+                  Add
+                </button>
               </div>
-              <button
-                className="h-10 rounded-md bg-[#19403c] px-4 text-sm font-semibold text-white hover:bg-[#23554f]"
-                onClick={() => onAddProduct(product)}
-                type="button"
-              >
-                Add
-              </button>
-            </div>
-            <p className="mt-4 min-h-12 text-sm leading-6 text-[#4b5651]">{product.description}</p>
-            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#eee6da] pt-4 text-sm">
-              <div>
-                <span className="block text-[#66706b]">Base price</span>
-                <strong>{formatInr(product.pricePerBaseUnitPaise)}</strong>
-                <span className="text-[#66706b]"> / {product.baseUnit}</span>
+              <p className="mt-4 min-h-12 text-sm leading-6 text-[#4b5651]">{product.description}</p>
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#eee6da] pt-4 text-sm">
+                <div>
+                  <span className="block text-[#66706b]">Base price</span>
+                  <strong>{formatInr(product.pricePerBaseUnitPaise)}</strong>
+                  <span className="text-[#66706b]"> / {product.baseUnit}</span>
+                </div>
+                <div>
+                  <span className="block text-[#66706b]">Available stock</span>
+                  <strong>{formatQty(product.stockBaseQty, product.baseUnit)}</strong>
+                </div>
               </div>
-              <div>
-                <span className="block text-[#66706b]">Available stock</span>
-                <strong>{formatQty(product.stockBaseQty, product.baseUnit)}</strong>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <SellerQuotations orders={orders} />
     </>
+  );
+}
+
+function SellerQuotations({ orders }: { orders: Order[] }) {
+  return (
+    <section className="rounded-md border border-[#d7cec0] bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">My quotations</h2>
+          <p className="mt-1 text-sm text-[#66706b]">Track approval status and ordered quantities.</p>
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-4">
+        {orders.length === 0 ? (
+          <p className="rounded-md border border-dashed border-[#c9c0b4] p-4 text-sm leading-6 text-[#66706b]">
+            You have not placed any quotations yet.
+          </p>
+        ) : (
+          orders.map((order) => (
+            <article className="rounded-md border border-[#eee6da] p-4" key={order.id}>
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#9b5f22]">
+                    {order.id.slice(0, 8)} · {order.createdAt}
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold">{order.customer}</h3>
+                </div>
+                <StatusBadge status={order.status} />
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {order.lines.map((line) => (
+                  <div
+                    className="grid gap-2 rounded-[4px] bg-[#f7f3ea] p-3 text-sm md:grid-cols-[1fr_auto]"
+                    key={`${order.id}-${line.productId}`}
+                  >
+                    <div>
+                      <strong className="block">{line.productName}</strong>
+                      <span className="text-[#66706b]">
+                        Ordered {formatQty(line.quantity, line.unit)} · Stored {line.baseQuantity.toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                    <strong>{formatInr(line.lineTotalPaise)}</strong>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex justify-end text-base font-semibold">
+                Total: {formatInr(order.totalPaise)}
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StatusBadge({ status }: { status: OrderStatus }) {
+  const styles: Record<OrderStatus, string> = {
+    new: "bg-[#eef5f3] text-[#19403c]",
+    reviewing: "bg-[#fff3d8] text-[#7a520f]",
+    approved: "bg-[#e7f6ea] text-[#246138]",
+    rejected: "bg-[#fff0ed] text-[#8f2f1f]",
+  };
+
+  return (
+    <span className={`w-fit rounded-[4px] px-3 py-1 text-xs font-semibold capitalize ${styles[status]}`}>
+      {status}
+    </span>
   );
 }
 
