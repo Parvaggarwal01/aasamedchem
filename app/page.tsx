@@ -39,6 +39,7 @@ export default function Home() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customer, setCustomer] = useState("Aasa Demo Labs");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
 
@@ -114,6 +115,7 @@ export default function Home() {
 
   function runMutation(task: () => Promise<void>) {
     setError("");
+    setSuccess("");
     startTransition(async () => {
       try {
         await task();
@@ -131,6 +133,7 @@ export default function Home() {
     runMutation(async () => {
       const nextSession = await loginAction(input);
       setSession(nextSession);
+      setSuccess("Logged in successfully.");
     });
   }
 
@@ -138,6 +141,7 @@ export default function Home() {
     runMutation(async () => {
       const nextSession = await registerAction(input);
       setSession(nextSession);
+      setSuccess("Account created successfully.");
     });
   }
 
@@ -148,6 +152,7 @@ export default function Home() {
       setProducts([]);
       setOrders([]);
       setCart([]);
+      setSuccess("Logged out successfully.");
     });
   }
 
@@ -177,6 +182,7 @@ export default function Home() {
     runMutation(async () => {
       await createQuotationAction(customer, cart);
       setCart([]);
+      setSuccess("Quotation placed successfully.");
     });
   }
 
@@ -198,6 +204,7 @@ export default function Home() {
     runMutation(async () => {
       await createProductAction(input);
       formElement.reset();
+      setSuccess("Product added successfully.");
     });
   }
 
@@ -242,6 +249,11 @@ export default function Home() {
             {error}
           </div>
         ) : null}
+        {success ? (
+          <div className="rounded-md border border-[#9dc5a6] bg-[#f0faf2] px-4 py-3 text-sm font-medium text-[#236236]">
+            {success}
+          </div>
+        ) : null}
         {isLoading || isPending ? (
           <div className="mt-3 rounded-md border border-[#d7cec0] bg-white px-4 py-3 text-sm text-[#66706b]">
             {isLoading ? "Loading inventory from Neon..." : "Saving changes..."}
@@ -283,10 +295,23 @@ export default function Home() {
             <AdminPanel
               isLoading={isLoading}
               onCreateProduct={saveProduct}
-              onDeleteProduct={(productId) => runMutation(() => deleteProductAction(productId))}
-              onSeedDemo={() => runMutation(seedDemoDataAction)}
+              onDeleteProduct={(productId) =>
+                runMutation(async () => {
+                  await deleteProductAction(productId);
+                  setSuccess("Product deleted successfully.");
+                })
+              }
+              onSeedDemo={() =>
+                runMutation(async () => {
+                  await seedDemoDataAction();
+                  setSuccess("Demo inventory loaded successfully.");
+                })
+              }
               onUpdateOrderStatus={(orderId, status) =>
-                runMutation(() => updateOrderStatusAction(orderId, status))
+                runMutation(async () => {
+                  await updateOrderStatusAction(orderId, status);
+                  setSuccess("Quotation status updated successfully.");
+                })
               }
               orders={orders}
               products={products}
