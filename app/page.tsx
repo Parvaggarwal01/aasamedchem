@@ -6,15 +6,32 @@ import {
   createQuotationAction,
   deleteProductAction,
   getDashboardDataAction,
+  getSessionAction,
+  loginAction,
+  logoutAction,
+  registerAction,
   seedDemoDataAction,
   updateOrderStatusAction,
 } from "@/app/actions";
 import { calculateLine, formatInr, formatQty } from "@/lib/pricing";
-import type { CartLine, Dimension, Order, OrderStatus, Product, ProductInput, Role, Unit } from "@/lib/types";
+import type {
+  CartLine,
+  Dimension,
+  LoginInput,
+  Order,
+  OrderStatus,
+  Product,
+  ProductInput,
+  RegisterInput,
+  Role,
+  Unit,
+  UserSession,
+} from "@/lib/types";
 import { fromBaseQuantity, supportedUnits } from "@/lib/units";
 
 export default function Home() {
-  const [role, setRole] = useState<Role>("seller");
+  const [session, setSession] = useState<UserSession | null>(null);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
@@ -27,6 +44,16 @@ export default function Home() {
 
   async function refreshDashboard() {
     setError("");
+    const currentSession = await getSessionAction();
+    setSession(currentSession);
+
+    if (!currentSession) {
+      setProducts([]);
+      setOrders([]);
+      setIsLoading(false);
+      return;
+    }
+
     const data = await getDashboardDataAction();
     setProducts(data.products);
     setOrders(data.orders);
@@ -93,7 +120,34 @@ export default function Home() {
         await refreshDashboard();
       } catch (mutationError) {
         setError(mutationError instanceof Error ? mutationError.message : "Request failed");
+        if (mutationError instanceof Error && mutationError.message === "Unauthorized") {
+          setSession(null);
+        }
       }
+    });
+  }
+
+  function submitLogin(input: LoginInput) {
+    runMutation(async () => {
+      const nextSession = await loginAction(input);
+      setSession(nextSession);
+    });
+  }
+
+  function submitRegister(input: RegisterInput) {
+    runMutation(async () => {
+      const nextSession = await registerAction(input);
+      setSession(nextSession);
+    });
+  }
+
+  function logout() {
+    runMutation(async () => {
+      await logoutAction();
+      setSession(null);
+      setProducts([]);
+      setOrders([]);
+      setCart([]);
     });
   }
 
@@ -123,12 +177,12 @@ export default function Home() {
     runMutation(async () => {
       await createQuotationAction(customer, cart);
       setCart([]);
-      setRole("admin");
     });
   }
 
   function saveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     const form = new FormData(event.currentTarget);
     const dimension = form.get("dimension") as Dimension;
     const input: ProductInput = {
@@ -143,7 +197,7 @@ export default function Home() {
 
     runMutation(async () => {
       await createProductAction(input);
-      event.currentTarget.reset();
+      formElement.reset();
     });
   }
 
@@ -164,20 +218,21 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="flex w-full max-w-sm rounded-md border border-white/20 bg-white/10 p-1">
-            {(["seller", "admin"] as Role[]).map((option) => (
+          {session ? (
+            <div className="w-full max-w-sm rounded-md border border-white/20 bg-white/10 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#f0c46b]">
+                Signed in as {session.role}
+              </p>
+              <p className="mt-1 truncate text-sm text-[#dce8e3]">{session.email}</p>
               <button
-                key={option}
-                className={`h-11 flex-1 rounded-[4px] text-sm font-semibold capitalize transition ${
-                  role === option ? "bg-white text-[#19403c]" : "text-white hover:bg-white/10"
-                }`}
-                onClick={() => setRole(option)}
+                className="mt-4 h-10 w-full rounded-md bg-white px-4 text-sm font-semibold text-[#19403c] hover:bg-[#eef5f3]"
+                onClick={logout}
                 type="button"
               >
-                {option === "seller" ? "Seller/User" : "Admin"}
+                Logout
               </button>
-            ))}
-          </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -194,22 +249,39 @@ export default function Home() {
         ) : null}
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[1fr_360px] lg:px-8">
+      {!session && !isLoading ? (
+        <section className="mx-auto max-w-xl px-5 py-8 lg:px-8">
+          <AuthPanel
+            authMode={authMode}
+            onAuthModeChange={setAuthMode}
+            onLogin={submitLogin}
+            onRegister={submitRegister}
+          />
+        </section>
+      ) : null}
+
+      {session ? (
+        <section
+          className={`mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:px-8 ${
+            session.role === "seller" ? "lg:grid-cols-[1fr_360px]" : ""
+          }`}
+        >
         <div className="space-y-6">
-          {role === "seller" ? (
+          {session.role === "seller" ? (
             <SellerPanel
               categories={categories}
               category={category}
               filteredProducts={filteredProducts}
+              isLoading={isLoading}
               onAddProduct={addProductToCart}
               onCategoryChange={setCategory}
               onQueryChange={setQuery}
-              onSeedDemo={() => runMutation(seedDemoDataAction)}
               products={products}
               query={query}
             />
           ) : (
             <AdminPanel
+              isLoading={isLoading}
               onCreateProduct={saveProduct}
               onDeleteProduct={(productId) => runMutation(() => deleteProductAction(productId))}
               onSeedDemo={() => runMutation(seedDemoDataAction)}
@@ -222,20 +294,116 @@ export default function Home() {
           )}
         </div>
 
-        <QuotationPanel
-          cart={cart}
-          cartPreview={cartPreview}
-          customer={customer}
-          onCustomerChange={setCustomer}
-          onPlaceQuotation={placeQuotation}
-          onRemoveLine={(productId) =>
-            setCart((current) => current.filter((item) => item.productId !== productId))
-          }
-          onUpdateLine={updateCartLine}
-          products={products}
-        />
-      </section>
+          {session.role === "seller" ? (
+            <QuotationPanel
+              cart={cart}
+              cartPreview={cartPreview}
+              customer={customer}
+              onCustomerChange={setCustomer}
+              onPlaceQuotation={placeQuotation}
+              onRemoveLine={(productId) =>
+                setCart((current) => current.filter((item) => item.productId !== productId))
+              }
+              onUpdateLine={updateCartLine}
+              products={products}
+            />
+          ) : null}
+        </section>
+      ) : null}
     </main>
+  );
+}
+
+function AuthPanel({
+  authMode,
+  onAuthModeChange,
+  onLogin,
+  onRegister,
+}: {
+  authMode: "login" | "register";
+  onAuthModeChange: (mode: "login" | "register") => void;
+  onLogin: (input: LoginInput) => void;
+  onRegister: (input: RegisterInput) => void;
+}) {
+  const [registerRole, setRegisterRole] = useState<Role>("seller");
+
+  function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("email"));
+    const password = String(form.get("password"));
+
+    if (authMode === "login") {
+      onLogin({ email, password });
+      return;
+    }
+
+    onRegister({
+      email,
+      password,
+      role: registerRole,
+      adminInviteCode: String(form.get("adminInviteCode") ?? ""),
+    });
+  }
+
+  return (
+    <section className="rounded-md border border-[#d7cec0] bg-white p-5 shadow-sm">
+      <div className="flex rounded-md border border-[#c9c0b4] bg-[#f7f3ea] p-1">
+        {(["login", "register"] as const).map((mode) => (
+          <button
+            className={`h-10 flex-1 rounded-[4px] text-sm font-semibold capitalize ${
+              authMode === mode ? "bg-[#19403c] text-white" : "text-[#56615d] hover:bg-white"
+            }`}
+            key={mode}
+            onClick={() => onAuthModeChange(mode)}
+            type="button"
+          >
+            {mode}
+          </button>
+        ))}
+      </div>
+
+      <form className="mt-5 space-y-4" onSubmit={submitAuth}>
+        <label className="block text-sm font-medium text-[#56615d]">
+          Email
+          <input className="input mt-2" name="email" placeholder="you@example.com" type="email" required />
+        </label>
+        <label className="block text-sm font-medium text-[#56615d]">
+          Password
+          <input className="input mt-2" minLength={8} name="password" placeholder="Minimum 8 characters" type="password" required />
+        </label>
+
+        {authMode === "register" ? (
+          <>
+            <label className="block text-sm font-medium text-[#56615d]">
+              Register as
+              <select
+                className="input mt-2"
+                onChange={(event) => setRegisterRole(event.target.value as Role)}
+                value={registerRole}
+              >
+                <option value="seller">Seller/User</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+
+            {registerRole === "admin" ? (
+              <label className="block text-sm font-medium text-[#56615d]">
+                Admin invite code
+                <input className="input mt-2" name="adminInviteCode" placeholder="Required for admin registration" />
+              </label>
+            ) : null}
+          </>
+        ) : null}
+
+        <button
+          className="h-11 w-full rounded-md bg-[#19403c] px-4 font-semibold text-white hover:bg-[#23554f]"
+          type="submit"
+        >
+          {authMode === "login" ? "Login" : "Create account"}
+        </button>
+      </form>
+    </section>
   );
 }
 
@@ -243,25 +411,29 @@ function SellerPanel({
   categories,
   category,
   filteredProducts,
+  isLoading,
   onAddProduct,
   onCategoryChange,
   onQueryChange,
-  onSeedDemo,
   products,
   query,
 }: {
   categories: string[];
   category: string;
   filteredProducts: Product[];
+  isLoading: boolean;
   onAddProduct: (product: Product) => void;
   onCategoryChange: (category: string) => void;
   onQueryChange: (query: string) => void;
-  onSeedDemo: () => void;
   products: Product[];
   query: string;
 }) {
+  if (isLoading) {
+    return <InventoryLoading />;
+  }
+
   if (products.length === 0) {
-    return <EmptyInventory onSeedDemo={onSeedDemo} />;
+    return <SellerEmptyInventory />;
   }
 
   return (
@@ -456,6 +628,7 @@ function QuotationPanel({
 }
 
 function AdminPanel({
+  isLoading,
   onCreateProduct,
   onDeleteProduct,
   onSeedDemo,
@@ -463,6 +636,7 @@ function AdminPanel({
   orders,
   products,
 }: {
+  isLoading: boolean;
   onCreateProduct: (event: FormEvent<HTMLFormElement>) => void;
   onDeleteProduct: (productId: string) => void;
   onSeedDemo: () => void;
@@ -472,7 +646,8 @@ function AdminPanel({
 }) {
   return (
     <div className="space-y-6">
-      {products.length === 0 ? <EmptyInventory onSeedDemo={onSeedDemo} /> : null}
+      {isLoading ? <InventoryLoading /> : null}
+      {!isLoading && products.length === 0 ? <EmptyInventory onSeedDemo={onSeedDemo} /> : null}
 
       <section className="rounded-md border border-[#d7cec0] bg-white p-5 shadow-sm">
         <h2 className="text-2xl font-semibold">Admin inventory</h2>
@@ -656,6 +831,35 @@ function EmptyInventory({ onSeedDemo }: { onSeedDemo: () => void }) {
       >
         Load demo inventory
       </button>
+    </section>
+  );
+}
+
+function SellerEmptyInventory() {
+  return (
+    <section className="rounded-md border border-[#d7cec0] bg-white p-5 shadow-sm">
+      <h2 className="text-2xl font-semibold">No products available</h2>
+      <p className="mt-2 text-sm leading-6 text-[#66706b]">
+        Inventory has not been published yet. Please check back after an admin adds products.
+      </p>
+    </section>
+  );
+}
+
+function InventoryLoading() {
+  return (
+    <section className="rounded-md border border-[#d7cec0] bg-white p-5 shadow-sm">
+      <div className="h-5 w-44 animate-pulse rounded bg-[#e8dfd2]" />
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {[0, 1, 2, 3].map((item) => (
+          <div className="rounded-md border border-[#eee6da] p-4" key={item}>
+            <div className="h-4 w-20 animate-pulse rounded bg-[#efe7dc]" />
+            <div className="mt-3 h-6 w-3/4 animate-pulse rounded bg-[#e4d9cb]" />
+            <div className="mt-3 h-4 w-full animate-pulse rounded bg-[#f0e9df]" />
+            <div className="mt-2 h-4 w-2/3 animate-pulse rounded bg-[#f0e9df]" />
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

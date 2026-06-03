@@ -46,3 +46,19 @@ export type ProductInput = {
   priceRupees: number;
   description: string;
 };
+
+export type UserSession = {
+  id: string;
+  email: string;
+  role: Role;
+};
+
+export type LoginInput = {
+  email: string;
+  password: string;
+};
+
+export type RegisterInput = LoginInput & {
+  role: Role;
+  adminInviteCode?: string;
+};

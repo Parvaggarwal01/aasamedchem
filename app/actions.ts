@@ -1,9 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createSession, destroySession, getSession, hashPassword, requireRole, requireSession, verifyPassword } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { calculateLine } from "@/lib/pricing";
-import type { CartLine, Dimension, Order, OrderStatus, Product, ProductInput, Unit } from "@/lib/types";
+import type {
+  CartLine,
+  Dimension,
+  LoginInput,
+  Order,
+  OrderStatus,
+  Product,
+  ProductInput,
+  RegisterInput,
+  Role,
+  Unit,
+  UserSession,
+} from "@/lib/types";
 import { baseUnitForDimension, isUnitCompatible } from "@/lib/units";
 
 type ProductRow = {
@@ -35,6 +48,13 @@ type OrderLineRow = {
   ordered_unit: Unit;
   base_qty: string;
   line_total_inr: string;
+};
+
+type UserRow = {
+  id: string;
+  email: string;
+  password_hash: string;
+  role: Role;
 };
 
 const demoProducts: ProductInput[] = [
@@ -100,19 +120,117 @@ function assertPositiveNumber(value: number, label: string) {
   }
 }
 
+function normalizeEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+
+  if (!normalized.includes("@")) {
+    throw new Error("Enter a valid email address");
+  }
+
+  return normalized;
+}
+
+function toPublicSession(row: Pick<UserRow, "id" | "email" | "role">): UserSession {
+  return {
+    id: row.id,
+    email: row.email,
+    role: row.role,
+  };
+}
+
+export async function getSessionAction() {
+  return getSession();
+}
+
+export async function registerAction(input: RegisterInput) {
+  const email = normalizeEmail(input.email);
+  const role = input.role;
+
+  if (role === "admin") {
+    const expectedInviteCode = process.env.ADMIN_INVITE_CODE;
+    const [adminCount] = (await sql`
+      select count(*)::int as count
+      from users
+      where role = 'admin'
+    `) as Array<{ count: number }>;
+
+    if (adminCount.count > 0 && (!expectedInviteCode || input.adminInviteCode !== expectedInviteCode)) {
+      throw new Error("Valid admin invite code is required");
+    }
+  }
+
+  const passwordHash = await hashPassword(input.password);
+
+  try {
+    const [user] = (await sql`
+      insert into users (email, password_hash, role)
+      values (${email}, ${passwordHash}, ${role})
+      returning id, email, role
+    `) as Array<Pick<UserRow, "id" | "email" | "role">>;
+
+    const session = toPublicSession(user);
+    await createSession(session);
+    revalidatePath("/");
+    return session;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("duplicate key")) {
+      throw new Error("An account with this email already exists");
+    }
+
+    throw error;
+  }
+}
+
+export async function loginAction(input: LoginInput) {
+  const email = normalizeEmail(input.email);
+  const [user] = (await sql`
+    select id, email, password_hash, role
+    from users
+    where email = ${email}
+    limit 1
+  `) as UserRow[];
+
+  if (!user || !(await verifyPassword(input.password, user.password_hash))) {
+    throw new Error("Invalid email or password");
+  }
+
+  const session = toPublicSession(user);
+  await createSession(session);
+  revalidatePath("/");
+  return session;
+}
+
+export async function logoutAction() {
+  await destroySession();
+  revalidatePath("/");
+}
+
 export async function getDashboardDataAction() {
-  const [productRows, orderRows, lineRows] = await Promise.all([
-    sql`
+  const session = await requireSession();
+  const productRows = (await sql`
       select id, sku, name, category, description, dimension, base_unit, stock_base_qty, price_per_base_unit_inr
       from products
       order by created_at desc, name asc
-    ` as unknown as Promise<ProductRow[]>,
-    sql`
+    `) as ProductRow[];
+
+  const orderRows =
+    session.role === "admin"
+      ? ((await sql`
       select id, customer_name, status, created_at::text, total_inr
       from quotations
       order by created_at desc
-    ` as unknown as Promise<OrderRow[]>,
-    sql`
+    `) as OrderRow[])
+      : ((await sql`
+      select id, customer_name, status, created_at::text, total_inr
+      from quotations
+      where seller_id = ${session.id}
+      order by created_at desc
+    `) as OrderRow[]);
+
+  const lineRows =
+    orderRows.length === 0
+      ? []
+      : ((await sql`
       select
         ql.quotation_id,
         ql.product_id,
@@ -124,9 +242,9 @@ export async function getDashboardDataAction() {
         ql.line_total_inr
       from quotation_lines ql
       join products p on p.id = ql.product_id
+      where ql.quotation_id = any(${orderRows.map((row) => row.id)})
       order by ql.id asc
-    ` as unknown as Promise<OrderLineRow[]>,
-  ]);
+    `) as OrderLineRow[]);
 
   const linesByOrder = new Map<string, Order["lines"]>();
 
@@ -158,6 +276,7 @@ export async function getDashboardDataAction() {
 }
 
 export async function createProductAction(input: ProductInput) {
+  await requireRole("admin");
   assertPositiveNumber(input.stockBaseQty, "Stock");
   assertPositiveNumber(input.priceRupees, "Price");
 
@@ -190,16 +309,20 @@ export async function createProductAction(input: ProductInput) {
 }
 
 export async function deleteProductAction(productId: string) {
+  await requireRole("admin");
   await sql`delete from products where id = ${productId}`;
   revalidatePath("/");
 }
 
 export async function updateOrderStatusAction(orderId: string, status: OrderStatus) {
+  await requireRole("admin");
   await sql`update quotations set status = ${status} where id = ${orderId}`;
   revalidatePath("/");
 }
 
 export async function createQuotationAction(customer: string, lines: CartLine[]) {
+  const session = await requireSession();
+
   if (!customer.trim()) {
     throw new Error("Customer is required");
   }
@@ -240,8 +363,8 @@ export async function createQuotationAction(customer: string, lines: CartLine[])
 
   const totalInr = pricedLines.reduce((total, line) => total + line.lineTotalInr, 0);
   const [quotation] = (await sql`
-    insert into quotations (customer_name, status, total_inr)
-    values (${customer.trim()}, 'new', ${totalInr})
+    insert into quotations (seller_id, customer_name, status, total_inr)
+    values (${session.id}, ${customer.trim()}, 'new', ${totalInr})
     returning id
   `) as Array<{ id: string }>;
 
@@ -272,6 +395,8 @@ export async function createQuotationAction(customer: string, lines: CartLine[])
 }
 
 export async function seedDemoDataAction() {
+  await requireRole("admin");
+
   for (const product of demoProducts) {
     const baseUnit = baseUnitForDimension(product.dimension);
     await sql`

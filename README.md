@@ -26,17 +26,19 @@ The browser renders the seller and admin panels from Next.js. Server Actions in 
 
 ## Authentication and Roles
 
-Prototype access is represented by the role switcher:
+The app uses email/password authentication with signed HTTP-only session cookies:
 
 - Admin: inventory and incoming quotation/order management.
 - Seller/User: product discovery and quotation placement.
 
-Suggested test credentials for a database-backed version:
+Seller registration is open from the UI. Admin registration requires `ADMIN_INVITE_CODE` after the first admin exists. To avoid setup deadlock, the first admin account can be registered without an invite code when there are no admins in the database.
 
-- Admin: `admin@aasamedchem.local` / `Admin@12345`
-- Seller: `seller@aasamedchem.local` / `Seller@12345`
+Suggested test credentials:
 
-Passwords should be hashed with a strong password hashing function before storing in PostgreSQL. Do not commit real credentials.
+- Admin: register `admin@aasamedchem.local` / `Admin@12345`
+- Seller: register `seller@aasamedchem.local` / `Seller@12345`
+
+Passwords are stored as PBKDF2-SHA256 hashes. Do not commit real credentials.
 
 ## Database Schema
 
@@ -141,7 +143,7 @@ Never commit `.env.local` or real secrets.
 
 1. Push the repository to GitHub.
 2. Import the project in Vercel.
-3. Add `DATABASE_URL` and `AUTH_SECRET` in Vercel Project Settings.
+3. Add `DATABASE_URL`, `AUTH_SECRET`, and `ADMIN_INVITE_CODE` in Vercel Project Settings.
 4. Connect the Neon database and run the schema migration.
 5. Deploy with the default Next.js build command:
 
@@ -153,7 +155,7 @@ npm run build
 
 Seller/User flow:
 
-1. Select `Seller/User`.
+1. Register or log in as a Seller/User.
 2. Search or filter products.
 3. Add products to the quotation.
 4. Enter quantities in any supported compatible unit.
@@ -162,7 +164,7 @@ Seller/User flow:
 
 Admin flow:
 
-1. Select `Admin`.
+1. Register or log in as an Admin.
 2. Review inventory levels and alternate unit displays.
 3. Add or delete products.
 4. Review incoming quotations/orders.
